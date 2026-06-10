@@ -18,6 +18,10 @@ The models are trained on bounding-box crops extracted from a YOLO-format helmet
 | EfficientNetV2-B0 (transfer) | 0.9665 | 0.9525 | 0.9652 | 4.79 | 38.5 | 6,083,538 |
 | ConvNeXt-Tiny (transfer) | 0.9756 | 0.9648 | 0.9585 | 12.93 | 235.0 | 27,918,818 |
 
+### Confusion Matrices
+
+![Confusion matrices](figures/confusion_matrices.png)
+
 ## Key Findings
 
 - **Transfer learning clearly outperforms the from-scratch model**, confirming the value of ImageNet pretraining. ConvNeXt-Tiny achieves the highest accuracy (97.6%).
@@ -27,20 +31,42 @@ The models are trained on bounding-box crops extracted from a YOLO-format helmet
 
 ## Explainability
 
-Two complementary XAI techniques are used:
-- **Grad-CAM** — highlights the image regions most responsible for the prediction.
-- **SHAP** (GradientExplainer) — shows per-pixel contributions supporting or opposing the prediction.
+Two complementary XAI techniques are used to interpret the models.
+
+### Grad-CAM
+
+Highlights the image regions most responsible for each prediction.
+
+![Grad-CAM](figures/gradcam_hq.png)
+
+### SHAP
+
+Shows per-pixel contributions supporting (red) or opposing (blue) the prediction.
+
+![SHAP](figures/shap_hq.png)
 
 ## Live Demo
 
 An interactive demo is available on Hugging Face Spaces, where you can upload an image and see predictions from both lightweight models along with their Grad-CAM heatmaps:
 
-https://huggingface.co/spaces/efeyalcin/helmet-classification-xai
+**https://huggingface.co/spaces/efeyalcin/helmet-classification-xai**
 
 ## Repository Contents
 
 - `helmet_classification_xai.ipynb` — full notebook (data preparation, training, evaluation, Grad-CAM, SHAP)
+- `app.py` — source code for the Hugging Face Spaces demo (Gradio)
+- `requirements.txt` — Python dependencies
+- `figures/` — generated figures (confusion matrices, Grad-CAM, SHAP)
 
 ## Tech Stack
 
 TensorFlow / Keras, scikit-learn, SHAP, OpenCV, Gradio.
+
+## How to Run
+
+The notebook is designed to run on Kaggle with a GPU accelerator (internet enabled for ImageNet weights). To run the demo locally, place `custom_cnn.keras` and `efficientnetv2.keras` (available from the Hugging Face Space) in the project root, then:
+
+```bash
+pip install -r requirements.txt
+python app.py
+```
