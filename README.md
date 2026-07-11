@@ -1,72 +1,125 @@
-# Explainable Helmet-Use Classification
+# Explainable CNN-Based Helmet-Use Classification for Intelligent Rider Safety Monitoring
 
-Deep learning project for classifying whether a person is wearing a helmet, with explainability analysis using Grad-CAM and SHAP. Developed as a final project for the Machine Learning & Smart Systems course.
+Machine Learning & Smart Systems final project — University of Europe for Applied Sciences, Potsdam.
 
-## Overview
+This project classifies whether a rider is wearing a helmet and explains every prediction with Grad-CAM and SHAP. Three CNN architectures are compared, and the best-balanced model is deployed as a live web demo.
 
-Three convolutional neural network models are trained to classify cropped images into two classes: **helmet** and **no_helmet**. Beyond raw accuracy, the project focuses on *explainability* — visualizing where each model "looks" when making a decision.
+The system is framed as a **rider-safety decision-support prototype with human review in the loop**, not as an automated enforcement tool.
+
+---
+
+## Live demo
+
+**[Try it on Hugging Face Spaces](https://huggingface.co/spaces/efeyalcin/helmet-classification-xai)** — upload an image and get a prediction, a confidence score, and a Grad-CAM heatmap.
+
+---
+
+## Results (test set)
+
+| Model | Accuracy | Macro-F1 | No-Helmet Recall | No-Helmet FNR | Inference (ms) | Size (MB) | Parameters |
+|---|---|---|---|---|---|---|---|
+| Custom CNN (from scratch) | 0.9363 | 0.9121 | 0.9370 | 0.0630 | 3.45 | 4.9 | 423,490 |
+| EfficientNetV2-B0 (transfer) | 0.9665 | 0.9525 | **0.9652** | **0.0348** | 4.79 | 38.5 | 6,083,538 |
+| ConvNeXt-Tiny (transfer) | **0.9756** | **0.9648** | 0.9585 | 0.0415 | 12.93 | 235.0 | 27,918,818 |
+
+**Key finding:** the most accurate model is not the safest one. ConvNeXt-Tiny leads on accuracy, but EfficientNetV2-B0 catches more no-helmet riders (higher recall, lower false-negative rate) while being roughly 6x smaller and 2.7x faster. For a safety application, no-helmet recall matters more than overall accuracy — which is why EfficientNetV2-B0 was selected for deployment.
+
+---
+
+## Figures
+
+### Methodology workflow
+![Methodology](figures/methodology_figure.png)
+
+### Training and validation curves
+![Accuracy](figures/training_accuracy_curves.png)
+![Loss](figures/training_loss_curves.png)
+
+The transfer-learning models converge quickly and stay stable. The custom CNN improves more slowly and its validation curve oscillates — a visible sign of the difficulty of training from scratch on an imbalanced dataset.
+
+### Dataset class distribution
+![Class distribution](figures/class_distribution.png)
+
+### Confusion matrices
+![Confusion matrices](figures/confusion_matrices.png)
+
+### Explainability — Grad-CAM
+![Grad-CAM](figures/gradcam_hq.png)
+
+### Explainability — SHAP
+![SHAP](figures/shap_hq.png)
+
+Both methods agree that predictions are driven mainly by the head and helmet region, though attention occasionally drifts to the background on harder images.
+
+---
 
 ## Dataset
 
-The models are trained on bounding-box crops extracted from a YOLO-format helmet detection dataset. Each detected head/rider region is cropped with 20% padding and labeled as helmet or no_helmet. This produces a 2-class image classification dataset, split 70/15/15 (train/validation/test) in a stratified manner.
+[Helmet or Without Helmet (Kaggle)](https://www.kaggle.com/datasets/quandmvn/helmet-or-without-helmet) — YOLO-annotated road images.
+
+Each annotated bounding box is cropped with 20% padding around the head region, which reduces background interference. This produces a two-class classification dataset:
+
+| Class | Total | Train | Val | Test |
+|---|---|---|---|---|
+| helmet | 14,305 | 10,014 | 2,146 | 2,145 |
+| no_helmet | 4,017 | 2,810 | 603 | 604 |
+| **Total** | **18,322** | **12,824** | **2,749** | **2,749** |
+
+All crops are resized to 224x224 and split 70/15/15 in a stratified way. The classes are imbalanced (helmet is ~3.5x more frequent), so class weights (helmet 0.64, no_helmet 2.28) are applied during training to protect the safety-critical minority class.
+
+---
 
 ## Models
 
-| Model | Accuracy | Macro-F1 | No-Helmet Recall | Inference (ms) | Size (MB) | Parameters |
-|---|---|---|---|---|---|---|
-| Custom CNN (from scratch) | 0.9363 | 0.9121 | 0.9370 | 3.45 | 4.9 | 423,490 |
-| EfficientNetV2-B0 (transfer) | 0.9665 | 0.9525 | 0.9652 | 4.79 | 38.5 | 6,083,538 |
-| ConvNeXt-Tiny (transfer) | 0.9756 | 0.9648 | 0.9585 | 12.93 | 235.0 | 27,918,818 |
+- **Custom CNN** — four conv blocks (32/64/128/256), batch norm, max pooling, global average pooling, dropout, softmax. Trained from scratch, ~423K parameters.
+- **EfficientNetV2-B0** — ImageNet-pretrained, two-phase fine-tuning (frozen backbone, then unfrozen top layers at a very low learning rate).
+- **ConvNeXt-Tiny** — ImageNet-pretrained, same two-phase strategy.
 
-### Confusion Matrices
+All models use Adam, sparse categorical cross-entropy, early stopping, and learning-rate reduction on plateau.
 
-![Confusion matrices](figures/confusion_matrices.png)
-
-## Key Findings
-
-- **Transfer learning clearly outperforms the from-scratch model**, confirming the value of ImageNet pretraining. ConvNeXt-Tiny achieves the highest accuracy (97.6%).
-- **Highest accuracy does not always mean the safest model.** For helmet enforcement, the *no-helmet recall* (catching violations) matters most — and EfficientNetV2 leads on that metric.
-- **The accuracy gain comes at a cost:** ConvNeXt-Tiny is ~48× larger and ~3× slower than the Custom CNN for a modest accuracy improvement, a key deployment trade-off.
-- **Grad-CAM and SHAP reveal where models attend.** Most predictions correctly focus on the helmet region, but some cases show attention drifting to the background — a useful warning about model reliability.
+---
 
 ## Explainability
 
-Two complementary XAI techniques are used to interpret the models.
+- **Grad-CAM** — class-discriminative heatmaps from the last convolutional layer, showing which regions drove the prediction.
+- **SHAP** — per-pixel attributions (gradient explainer), showing which regions support or oppose a prediction.
 
-### Grad-CAM
+Augmentation layers inside the trained models interfere with gradient computation, so augmentation-free clones are created and the trained weights transferred by name before generating explanations.
 
-Highlights the image regions most responsible for each prediction.
+---
 
-![Grad-CAM](figures/gradcam_hq.png)
+## Repository structure
 
-### SHAP
+```
+├── helmet_classification_xai.ipynb   # full pipeline: data prep, training, evaluation, Grad-CAM, SHAP
+├── generate_figures.py               # regenerates the training curves and class-distribution figure
+├── app.py                            # Hugging Face Spaces demo (Gradio)
+├── requirements.txt
+├── figures/                          # all figures used in the report
+└── LICENSE
+```
 
-Shows per-pixel contributions supporting (red) or opposing (blue) the prediction.
+---
 
-![SHAP](figures/shap_hq.png)
+## Reproducing
 
-## Live Demo
+The notebook runs end-to-end on Kaggle with a GPU (Tesla T4). Attach the dataset linked above, then run all cells. A fixed random seed (42) is used throughout.
 
-An interactive demo is available on Hugging Face Spaces, where you can upload an image and see predictions from both lightweight models along with their Grad-CAM heatmaps:
-
-**https://huggingface.co/spaces/efeyalcin/helmet-classification-xai**
-
-## Repository Contents
-
-- `helmet_classification_xai.ipynb` — full notebook (data preparation, training, evaluation, Grad-CAM, SHAP)
-- `app.py` — source code for the Hugging Face Spaces demo (Gradio)
-- `requirements.txt` — Python dependencies
-- `figures/` — generated figures (confusion matrices, Grad-CAM, SHAP)
-
-## Tech Stack
-
-TensorFlow / Keras, scikit-learn, SHAP, OpenCV, Gradio.
-
-## How to Run
-
-The notebook is designed to run on Kaggle with a GPU accelerator (internet enabled for ImageNet weights). To run the demo locally, place `custom_cnn.keras` and `efficientnetv2.keras` (available from the Hugging Face Space) in the project root, then:
+To regenerate the report figures from the recorded training histories:
 
 ```bash
-pip install -r requirements.txt
-python app.py
+pip install matplotlib
+python generate_figures.py
 ```
+
+---
+
+## Limitations
+
+The models detect whether a helmet is *present*, not whether it is *correctly worn* — a rider holding a helmet may be classified as compliant. The dataset comes from a single source and may not cover extreme lighting, occlusion, or unusual headwear. Explanations show occasional background reliance, so the system is intended for human-reviewed decision support rather than autonomous enforcement.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
